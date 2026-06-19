@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>弟弟表達板</title>
+<style>
+  /* ===================================================================
+     要改文字 / 選項：只改下面 <script> 最上面的 CATEGORIES 那一段
+     畫面永遠是 2×3 共六格。子頁第六格固定是「返回」，所以每分類放 5 個選項
+     主畫面可放最多 6 個分類，目前 4 個，剩 2 格留空，之後直接補上即可
+     =================================================================== */
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent;
+      user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  html, body { height:100%; width:100%; overflow:hidden; background:#0d1117;
+      font-family:"PingFang TC","Heiti TC","Microsoft JhengHei",system-ui,sans-serif; }
+  #grid { height:100%; width:100%; display:grid;
+          grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr 1fr;
+          gap:2.4vw; padding:max(2.4vw, env(safe-area-inset-top)) 2.4vw max(2.4vw, env(safe-area-inset-bottom)) 2.4vw; }
+  .cell { border-radius:26px; display:flex; align-items:center; justify-content:center; text-align:center;
+          color:#fff; font-weight:900; line-height:1.05; padding:1vh;
+          font-size:11vw; transition:transform .05s ease, filter .05s ease; }
+  .cell.empty { background:transparent; }
+  .cell:not(.empty):active { transform:scale(0.94); filter:brightness(1.3); }
+  .cell.press { transform:scale(0.9); filter:brightness(1.45); }
+
+  /* 六種固定位置顏色：每一格顏色不同，方便用顏色辨識（位置固定→顏色固定） */
+  .p0{background:#1f6feb} /* 藍 */
+  .p1{background:#cf222e} /* 紅 */
+  .p2{background:#1a7f37} /* 綠 */
+  .p3{background:#bc4c00} /* 橘 */
+  .p4{background:#8957e5} /* 紫 */
+  .p5{background:#0a7ea4} /* 青 */
+  .back{background:#57606a} /* 返回：灰 */
+</style>
+</head>
+<body>
+  <div id="grid"></div>
+
+<script>
+/* ====================== 可自由修改的內容 ======================
+   每個分類：name = 主畫面大按鈕文字，items = 點進去的 5 個選項
+   想念出跟畫面不同的話：寫成 {t:"按鈕字", say:"要念出來的話"} */
+const CATEGORIES = [
+  { name:"生理",   items:["尿尿","大便","冷","熱","不舒服"] },
+  { name:"不舒服", items:["頭痛","肚子痛","口腔","喉嚨","肢體"] },
+  { name:"清潔",   items:["口腔","鼻子","耳朵","眼睛","下身"] },
+  { name:"娛樂",   items:["新聞","棒球","卡通","音樂","休息"] },
+];
+/* ============================================================ */
+
+const grid = document.getElementById('grid');
+
+/* ---- 語音 (iPhone 內建 TTS) ---- */
+let voice = null;
+function pickVoice(){
+  const vs = speechSynthesis.getVoices();
+  voice = vs.find(v=>v.lang==='zh-TW') || vs.find(v=>/zh[-_]TW/i.test(v.lang))
+       || vs.find(v=>/zh[-_]HK/i.test(v.lang)) || vs.find(v=>v.lang && v.lang.startsWith('zh')) || null;
+}
+pickVoice();
+if (typeof speechSynthesis !== 'undefined') speechSynthesis.onvoiceschanged = pickVoice;
+function speak(text){
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang='zh-TW'; u.rate=0.9; u.pitch=1; u.volume=1;
+    if (voice) u.voice = voice;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+/* ---- 觸控反饋 ---- */
+function feedback(el){
+  el.classList.add('press');
+  setTimeout(()=>el.classList.remove('press'), 170);
+  if (navigator.vibrate) navigator.vibrate(40);
+}
+
+/* ---- 建立一格 ---- */
+function makeCell(label, cls, onTap){
+  const d = document.createElement('div');
+  d.className = 'cell ' + cls;
+  if (label) d.textContent = label;
+  if (onTap) d.addEventListener('click', ()=>onTap(d));
+  return d;
+}
+
+/* ---- 主畫面：六格放分類，不足補空格，永遠 2×3 ---- */
+function renderHome(){
+  grid.innerHTML = '';
+  for (let cell=0; cell<6; cell++){
+    if (cell < CATEGORIES.length){
+      const i = cell;
+      grid.appendChild(makeCell(CATEGORIES[i].name, 'p'+i, (el)=>{
+        feedback(el); speak(CATEGORIES[i].name);
+        setTimeout(()=>renderCategory(i), 130);
+      }));
+    } else {
+      grid.appendChild(makeCell('', 'empty', null));
+    }
+  }
+}
+
+/* ---- 分類頁：5 個選項 + 第 6 格返回 ---- */
+function renderCategory(i){
+  const cat = CATEGORIES[i];
+  grid.innerHTML = '';
+  cat.items.forEach((item, idx)=>{
+    const text = typeof item==='string' ? item : item.t;
+    const say  = typeof item==='string' ? item : (item.say || item.t);
+    grid.appendChild(makeCell(text, 'p'+idx, (el)=>{ feedback(el); speak(say); }));
+  });
+  grid.appendChild(makeCell('返回', 'back', (el)=>{
+    if (navigator.vibrate) navigator.vibrate(20);
+    renderHome();
+  }));
+}
+
+/* 解鎖 iOS 語音：第一次任何觸碰先暖機 */
+document.body.addEventListener('touchstart', function warm(){
+  try{ const u=new SpeechSynthesisUtterance(' '); u.volume=0; speechSynthesis.speak(u);}catch(e){}
+  document.body.removeEventListener('touchstart', warm);
+}, {once:true});
+
+renderHome();
+</script>
+</body>
+</html>
