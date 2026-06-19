@@ -87,7 +87,10 @@ function getInsets(){
 /* ---- 量真實可視像素，把舞台撐成滿版（橫式 3×2） ---- */
 function layout(){
   const r = vp.getBoundingClientRect();
-  const W = Math.round(r.width), H = Math.round(r.height);
+  const de = document.documentElement;
+  /* 取多來源最大值，避免某個 API 在 App 啟動瞬間回報過小而留黑邊 */
+  const W = Math.round(Math.max(r.width,  window.innerWidth  || 0, de.clientWidth  || 0));
+  const H = Math.round(Math.max(r.height, window.innerHeight || 0, de.clientHeight || 0));
   if (!W || !H) return;
   const ins = getInsets(), g = 8;
   if (W >= H){
@@ -112,8 +115,10 @@ function layout(){
 function relayout(){ requestAnimationFrame(layout); }
 window.addEventListener('resize', relayout);
 window.addEventListener('orientationchange', ()=>setTimeout(relayout, 250));
+window.addEventListener('pageshow', relayout);
+window.addEventListener('load', relayout);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', relayout);
-[60, 300, 800, 1500].forEach(t=>setTimeout(layout, t));
+[60, 300, 800, 1500, 2500].forEach(t=>setTimeout(layout, t));
 
 /* ---- 語音 (iPhone 內建 TTS) ---- */
 let voice = null;
