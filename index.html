@@ -9,38 +9,21 @@
 <style>
   /* ===================================================================
      要改文字 / 選項：只改下面 <script> 最上面的 CATEGORIES 那一段
-     永遠固定橫式 3×2。手機直放(方向鎖定)時自動旋轉成橫式並「鋪滿整個螢幕」
-     用 dvh/dvw → 加入主畫面變 App(全螢幕)時會用真正整個螢幕，不預留網址列
-     邊界(瀏海/底部 home條)用 env() 安全區自動避開
-     若旋轉方向相反：把下面兩個 rotate(90deg) 改成 rotate(-90deg)
+     永遠固定橫式 3×2，鋪滿整個螢幕(由 JS 量真實像素，撐到底不留黑邊)
+     手機直放(方向鎖定)時自動旋轉成橫式；加入主畫面變 App 也會滿版
+     若旋轉方向相反：把下面 const ROTATE = 90 改成 -90
      =================================================================== */
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent;
       user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
   html, body { height:100%; width:100%; overflow:hidden; background:#000;
       font-family:"PingFang TC","Heiti TC","Microsoft JhengHei",system-ui,sans-serif; }
 
-  #stage { position:fixed; transform-origin:center center; }
+  /* 量測真實可視範圍用（永遠等於整個畫面） */
+  #vp { position:fixed; inset:0; visibility:hidden; pointer-events:none; z-index:-1; }
 
-  /* 直放：旋轉成橫式，鋪滿整個螢幕（dvh/dvw = 真正可視範圍） */
-  @media (orientation: portrait){
-    #stage { top:50%; left:50%; width:100dvh; height:100dvw;
-             transform:translate(-50%,-50%) rotate(90deg);
-             /* 旋轉後：內容左=螢幕上(瀏海)、內容右=螢幕下(home條) */
-             padding-top:    calc(env(safe-area-inset-right)  + 6px);
-             padding-right:  calc(env(safe-area-inset-bottom) + 6px);
-             padding-bottom: calc(env(safe-area-inset-left)   + 6px);
-             padding-left:   calc(env(safe-area-inset-top)    + 6px); }
-  }
-  /* 橫放：正常方向，鋪滿整個螢幕 */
-  @media (orientation: landscape){
-    #stage { inset:0; width:auto; height:auto; transform:none;
-             padding-top:    calc(env(safe-area-inset-top)    + 6px);
-             padding-right:  calc(env(safe-area-inset-right)  + 6px);
-             padding-bottom: calc(env(safe-area-inset-bottom) + 6px);
-             padding-left:   calc(env(safe-area-inset-left)   + 6px); }
-  }
+  /* 舞台尺寸/位置/旋轉/留白都由 JS 設定 */
+  #stage { position:fixed; }
 
-  /* 永遠橫式 3×2 */
   #grid { height:100%; width:100%; display:grid;
           grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr); gap:12px; }
 
@@ -66,6 +49,7 @@
 </style>
 </head>
 <body>
+  <div id="vp"></div>
   <div id="stage"><div id="grid"></div></div>
 
 <script>
@@ -79,9 +63,57 @@ const CATEGORIES = [
   { name:"娛樂",   items:["新聞","棒球","卡通","音樂","休息"] },
   { name:"表達",   items:["對","不對","想","不想","晚一點"] },
 ];
+const ROTATE = 90; /* 方向相反就改成 -90 */
 /* ============================================================ */
 
-const grid = document.getElementById('grid');
+const vp    = document.getElementById('vp');
+const stage = document.getElementById('stage');
+const grid  = document.getElementById('grid');
+
+/* ---- iOS 安全區（實體方向：直放時 t=瀏海, b=底部 home條） ---- */
+function getInsets(){
+  const p = document.createElement('div');
+  p.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;'
+    + 'padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);'
+    + 'padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left);';
+  document.body.appendChild(p);
+  const cs = getComputedStyle(p);
+  const o = { t:parseFloat(cs.paddingTop)||0, r:parseFloat(cs.paddingRight)||0,
+              b:parseFloat(cs.paddingBottom)||0, l:parseFloat(cs.paddingLeft)||0 };
+  p.remove();
+  return o;
+}
+
+/* ---- 量真實可視像素，把舞台撐成滿版（橫式 3×2） ---- */
+function layout(){
+  const r = vp.getBoundingClientRect();
+  const W = Math.round(r.width), H = Math.round(r.height);
+  if (!W || !H) return;
+  const ins = getInsets(), g = 8;
+  if (W >= H){
+    /* 視窗已是橫向 → 不旋轉 */
+    stage.style.width  = W + 'px';
+    stage.style.height = H + 'px';
+    stage.style.left = '0px'; stage.style.top = '0px';
+    stage.style.transform = 'none';
+    stage.style.padding = (ins.t+g)+'px '+(ins.r+g)+'px '+(ins.b+g)+'px '+(ins.l+g)+'px';
+  } else {
+    /* 視窗直向 → 旋轉成橫式，舞台長短邊對調，撐滿整個畫面 */
+    stage.style.width  = H + 'px';
+    stage.style.height = W + 'px';
+    stage.style.left = (W/2) + 'px';
+    stage.style.top  = (H/2) + 'px';
+    stage.style.transform = 'translate(-50%,-50%) rotate('+ROTATE+'deg)';
+    /* 旋轉後：內容左=螢幕上(瀏海)=ins.t；內容右=螢幕下(home條)=ins.b */
+    stage.style.padding = (ins.r+g)+'px '+(ins.b+g)+'px '+(ins.l+g)+'px '+(ins.t+g)+'px';
+  }
+}
+/* 多次重算，確保 App 全螢幕/工具列穩定後也滿版 */
+function relayout(){ requestAnimationFrame(layout); }
+window.addEventListener('resize', relayout);
+window.addEventListener('orientationchange', ()=>setTimeout(relayout, 250));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', relayout);
+[60, 300, 800, 1500].forEach(t=>setTimeout(layout, t));
 
 /* ---- 語音 (iPhone 內建 TTS) ---- */
 let voice = null;
@@ -153,6 +185,7 @@ document.body.addEventListener('touchstart', function warm(){
 }, {once:true});
 
 renderHome();
+layout();
 </script>
 </body>
 </html>
