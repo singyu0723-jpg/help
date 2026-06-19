@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <title>弟弟表達板</title>
 <style>
   /* ===================================================================
      要改文字 / 選項：只改下面 <script> 最上面的 CATEGORIES 那一段
-     永遠固定橫式 3×2，鋪滿整個螢幕(由 JS 量真實像素，撐到底不留黑邊)
-     手機直放(方向鎖定)時自動旋轉成橫式；加入主畫面變 App 也會滿版
+     永遠固定橫式 3×2，鋪滿整個螢幕；手機直放(方向鎖定)會自動旋轉成橫式
+     字體由 JS 依格子大小自動放最大；加入主畫面變 App 也滿版
      若旋轉方向相反：把下面 const ROTATE = 90 改成 -90
      =================================================================== */
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent;
@@ -18,20 +19,18 @@
   html, body { height:100%; width:100%; overflow:hidden; background:#000;
       font-family:"PingFang TC","Heiti TC","Microsoft JhengHei",system-ui,sans-serif; }
 
-  /* 量測真實可視範圍用（永遠等於整個畫面） */
   #vp { position:fixed; inset:0; visibility:hidden; pointer-events:none; z-index:-1; }
-
-  /* 舞台尺寸/位置/旋轉/留白都由 JS 設定 */
   #stage { position:fixed; }
 
+  /* 永遠橫式 3×2，格線一定撐滿（不再用 container-type，避免 Safari 縮格 bug） */
   #grid { height:100%; width:100%; display:grid;
           grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr); gap:12px; }
 
-  .cell { container-type:size; border-radius:24px; overflow:hidden;
+  .cell { border-radius:24px; overflow:hidden;
           display:flex; align-items:center; justify-content:center; text-align:center;
           color:#fff; font-weight:900;
           transition:transform .04s ease, filter .04s ease, box-shadow .04s ease; }
-  .cell > span { font-size:36cqmin; line-height:1.04; padding:6px; word-break:break-word; }
+  .cell > span { font-size:var(--fs, 8vmin); line-height:1.04; padding:6px; word-break:break-word; }
   .cell.empty { background:transparent; }
   .cell:not(.empty):active { transform:scale(0.95); filter:brightness(1.3); }
   /* 按下回饋：縮放 + 變亮 + 白色內框（無聲音） */
@@ -84,11 +83,11 @@ function getInsets(){
   return o;
 }
 
-/* ---- 量真實可視像素，把舞台撐成滿版（橫式 3×2） ---- */
+/* ---- 量真實可視像素，把舞台撐成滿版（橫式 3×2），並算字體大小 ---- */
+const GAP = 12;
 function layout(){
   const r = vp.getBoundingClientRect();
   const de = document.documentElement;
-  /* 取多來源最大值，避免某個 API 在 App 啟動瞬間回報過小而留黑邊 */
   const W = Math.round(Math.max(r.width,  window.innerWidth  || 0, de.clientWidth  || 0));
   const H = Math.round(Math.max(r.height, window.innerHeight || 0, de.clientHeight || 0));
   if (!W || !H) return;
@@ -107,11 +106,17 @@ function layout(){
     stage.style.left = (W/2) + 'px';
     stage.style.top  = (H/2) + 'px';
     stage.style.transform = 'translate(-50%,-50%) rotate('+ROTATE+'deg)';
-    /* 旋轉後：內容左=螢幕上(瀏海)=ins.t；內容右=螢幕下(home條)=ins.b */
     stage.style.padding = (ins.r+g)+'px '+(ins.b+g)+'px '+(ins.l+g)+'px '+(ins.t+g)+'px';
   }
+  /* 依實際格子大小算字體（取最大可放） */
+  const cw = grid.clientWidth, ch = grid.clientHeight;
+  if (cw && ch){
+    const cellW = (cw - 2*GAP) / 3;   /* 3 欄 */
+    const cellH = (ch - 1*GAP) / 2;   /* 2 列 */
+    const fs = Math.max(24, Math.floor(0.36 * Math.min(cellW, cellH)));
+    de.style.setProperty('--fs', fs + 'px');
+  }
 }
-/* 多次重算，確保 App 全螢幕/工具列穩定後也滿版 */
 function relayout(){ requestAnimationFrame(layout); }
 window.addEventListener('resize', relayout);
 window.addEventListener('orientationchange', ()=>setTimeout(relayout, 250));
@@ -146,7 +151,7 @@ function feedback(el){
   if (navigator.vibrate) navigator.vibrate(40); /* Android 會震動；iOS 自動忽略 */
 }
 
-/* ---- 建立一格（文字包在 span，依格子大小縮放） ---- */
+/* ---- 建立一格 ---- */
 function makeCell(label, cls, onTap){
   const d = document.createElement('div');
   d.className = 'cell ' + cls;
@@ -169,6 +174,7 @@ function renderHome(){
       grid.appendChild(makeCell('', 'empty', null));
     }
   }
+  layout();
 }
 
 /* ---- 分類頁：5 個選項 + 第 6 格返回 ---- */
@@ -181,6 +187,7 @@ function renderCategory(i){
     grid.appendChild(makeCell(text, 'p'+idx, (el)=>{ feedback(el); speak(say); }));
   });
   grid.appendChild(makeCell('返回', 'back', (el)=>{ feedback(el); renderHome(); }));
+  layout();
 }
 
 /* 解鎖 iOS 語音：第一次任何觸碰先暖機 */
