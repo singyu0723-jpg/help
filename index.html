@@ -6,6 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" type="image/png" href="icon.png">
 <title>弟弟表達板</title>
 <style>
   /* ===================================================================
@@ -21,9 +23,6 @@
 
   #vp { position:fixed; inset:0; visibility:hidden; pointer-events:none; z-index:-1; }
   #stage { position:fixed; }
-  /* 版本號：用來確認看到的不是快取舊版 */
-  #ver { position:fixed; top:2px; left:4px; z-index:99; color:#666; font-size:11px;
-         opacity:.5; pointer-events:none; }
 
   /* 永遠橫式 3×2，格線一定撐滿（不再用 container-type，避免 Safari 縮格 bug） */
   #grid { height:100%; width:100%; display:grid;
@@ -52,7 +51,6 @@
 </head>
 <body>
   <div id="vp"></div>
-  <div id="ver">v8</div>
   <div id="stage"><div id="grid"></div></div>
 
 <script>
@@ -66,6 +64,8 @@ const CATEGORIES = [
   { name:"娛樂",   items:["新聞","棒球","卡通","音樂","休息"] },
   { name:"表達",   items:["對","不對","想","不想","晚一點"] },
 ];
+/* 第六格：直接念出來的按鈕，不進子分頁（想改字就改這裡） */
+const DIRECT = "都不是";
 const ROTATE = 90; /* 方向相反就改成 -90 */
 /* ============================================================ */
 
@@ -87,36 +87,31 @@ function getInsets(){
   return o;
 }
 
-/* ---- 直接用「手機螢幕尺寸」算，舞台撐成滿版（橫式 3×2），並算字體 ---- */
+/* ---- 量真實可視像素，把舞台撐成滿版（橫式 3×2），並算字體大小 ---- */
 const GAP = 12;
 function layout(){
+  const r = vp.getBoundingClientRect();
   const de = document.documentElement;
-  /* 手機螢幕固定尺寸：long=長邊, short=短邊（iPhone Air = 912 / 420） */
-  const long  = Math.max(screen.width, screen.height) || Math.max(window.innerWidth, window.innerHeight);
-  const short = Math.min(screen.width, screen.height) || Math.min(window.innerWidth, window.innerHeight);
-  if (!long || !short) return;
-  const isPortrait = window.matchMedia('(orientation: portrait)').matches
-                  || window.innerHeight > window.innerWidth;
+  const W = Math.round(Math.max(r.width,  window.innerWidth  || 0, de.clientWidth  || 0));
+  const H = Math.round(Math.max(r.height, window.innerHeight || 0, de.clientHeight || 0));
+  if (!W || !H) return;
   const ins = getInsets(), g = 8;
-
-  /* 內容一律以橫式排版：舞台邏輯尺寸 = long(寬) × short(高) */
-  stage.style.width  = long  + 'px';
-  stage.style.height = short + 'px';
-
-  if (isPortrait){
-    /* 螢幕是直的 → 旋轉成橫式，置中鋪滿整個 short×long 螢幕 */
-    stage.style.left = (short/2) + 'px';
-    stage.style.top  = (long/2)  + 'px';
-    stage.style.transform = 'translate(-50%,-50%) rotate('+ROTATE+'deg)';
-    /* 旋轉後：內容左=螢幕上(瀏海)=ins.t；內容右=螢幕下(home條)=ins.b */
-    stage.style.padding = (ins.r+g)+'px '+(ins.b+g)+'px '+(ins.l+g)+'px '+(ins.t+g)+'px';
-  } else {
-    /* 螢幕已是橫的 → 不旋轉，直接鋪滿 */
+  if (W >= H){
+    /* 視窗已是橫向 → 不旋轉 */
+    stage.style.width  = W + 'px';
+    stage.style.height = H + 'px';
     stage.style.left = '0px'; stage.style.top = '0px';
     stage.style.transform = 'none';
     stage.style.padding = (ins.t+g)+'px '+(ins.r+g)+'px '+(ins.b+g)+'px '+(ins.l+g)+'px';
+  } else {
+    /* 視窗直向 → 旋轉成橫式，舞台長短邊對調，撐滿整個畫面 */
+    stage.style.width  = H + 'px';
+    stage.style.height = W + 'px';
+    stage.style.left = (W/2) + 'px';
+    stage.style.top  = (H/2) + 'px';
+    stage.style.transform = 'translate(-50%,-50%) rotate('+ROTATE+'deg)';
+    stage.style.padding = (ins.r+g)+'px '+(ins.b+g)+'px '+(ins.l+g)+'px '+(ins.t+g)+'px';
   }
-
   /* 依實際格子大小算字體（取最大可放） */
   const cw = grid.clientWidth, ch = grid.clientHeight;
   if (cw && ch){
@@ -179,6 +174,9 @@ function renderHome(){
         feedback(el); speak(CATEGORIES[i].name);
         setTimeout(()=>renderCategory(i), 130);
       }));
+    } else if (cell === CATEGORIES.length && DIRECT){
+      /* 第六格：直接念，不進子分頁 */
+      grid.appendChild(makeCell(DIRECT, 'p'+cell, (el)=>{ feedback(el); speak(DIRECT); }));
     } else {
       grid.appendChild(makeCell('', 'empty', null));
     }
