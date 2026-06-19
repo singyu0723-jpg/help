@@ -9,27 +9,37 @@
 <style>
   /* ===================================================================
      要改文字 / 選項：只改下面 <script> 最上面的 CATEGORIES 那一段
-     畫面是橫向 3×2 共六格。分類頁第六格固定是「返回」，每分類放 5 個選項
-     默認橫向：手機直放時畫面自動旋轉成橫式；邊界(瀏海/白條)由 JS 精準避開
+     版面隨方向自動填滿：橫放 3×2、直放 2×3。字體依格子大小自動放最大
+     分類頁第六格固定是「返回」，每分類放 5 個選項
+     建議：手機橫放固定床邊，關閉「螢幕方向鎖定」效果最好
      =================================================================== */
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent;
       user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
   html, body { height:100%; width:100%; overflow:hidden; background:#000;
       font-family:"PingFang TC","Heiti TC","Microsoft JhengHei",system-ui,sans-serif; }
 
-  /* 舞台尺寸與旋轉由 JS 設定（像素精準） */
-  #stage { position:fixed; transform-origin:center center; }
+  /* 填滿整個可視畫面，四邊避開瀏海與底部白條 */
+  #grid { position:fixed; inset:0; display:grid; gap:12px;
+          padding: calc(env(safe-area-inset-top) + 8px)
+                   calc(env(safe-area-inset-right) + 8px)
+                   calc(env(safe-area-inset-bottom) + 8px)
+                   calc(env(safe-area-inset-left) + 8px); }
+  @media (orientation: landscape){
+    #grid { grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr); }
+  }
+  @media (orientation: portrait){
+    #grid { grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(3,1fr); }
+  }
 
-  #grid { height:100%; width:100%; display:grid;
-          grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr); gap:14px; }
-  .cell { border-radius:22px; display:flex; align-items:center; justify-content:center; text-align:center;
-          color:#fff; font-weight:900; line-height:1.0; padding:4px; white-space:nowrap;
-          font-size:15vmin;
+  .cell { container-type:size; border-radius:24px; overflow:hidden;
+          display:flex; align-items:center; justify-content:center; text-align:center;
+          color:#fff; font-weight:900;
           transition:transform .04s ease, filter .04s ease, box-shadow .04s ease; }
+  .cell > span { font-size:34cqmin; line-height:1.04; padding:6px; word-break:break-word; }
   .cell.empty { background:transparent; }
   .cell:not(.empty):active { transform:scale(0.95); filter:brightness(1.3); }
   /* 按下回饋：縮放 + 變亮 + 白色內框（無聲音） */
-  .cell.press { transform:scale(0.9); filter:brightness(1.45);
+  .cell.press { transform:scale(0.92); filter:brightness(1.45);
                 box-shadow:inset 0 0 0 10px #ffffff; }
 
   /* 六種固定位置顏色：位置固定→顏色固定，方便用顏色辨識 */
@@ -43,7 +53,7 @@
 </style>
 </head>
 <body>
-  <div id="stage"><div id="grid"></div></div>
+  <div id="grid"></div>
 
 <script>
 /* ====================== 可自由修改的內容 ======================
@@ -58,48 +68,7 @@ const CATEGORIES = [
 ];
 /* ============================================================ */
 
-const stage = document.getElementById('stage');
-const grid  = document.getElementById('grid');
-
-/* ---- 讀取 iOS 安全區數值（實體方向：直放時 t=瀏海, b=底部白條） ---- */
-function getInsets(){
-  const p = document.createElement('div');
-  p.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;'
-    + 'padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);'
-    + 'padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left);';
-  document.body.appendChild(p);
-  const cs = getComputedStyle(p);
-  const o = { t:parseFloat(cs.paddingTop)||0, r:parseFloat(cs.paddingRight)||0,
-              b:parseFloat(cs.paddingBottom)||0, l:parseFloat(cs.paddingLeft)||0 };
-  p.remove();
-  return o;
-}
-
-/* ---- 依方向設定舞台尺寸、旋轉、與安全留白（像素精準） ---- */
-function layout(){
-  const w = window.innerWidth, h = window.innerHeight, ins = getInsets(), gap = 10;
-  if (h >= w){
-    /* 直放 → 旋轉 90° 變橫式。舞台用螢幕長短邊對調 */
-    stage.style.width  = h + 'px';
-    stage.style.height = w + 'px';
-    stage.style.left   = (w/2) + 'px';
-    stage.style.top    = (h/2) + 'px';
-    stage.style.transform = 'translate(-50%,-50%) rotate(90deg)';
-    /* 旋轉後對應：內容左=螢幕上(瀏海)=ins.t；內容右=螢幕下(白條)=ins.b
-       padding 順序：上 右 下 左 */
-    stage.style.padding = (ins.r+gap)+'px '+(ins.b+gap)+'px '+(ins.l+gap)+'px '+(ins.t+gap)+'px';
-  } else {
-    /* 橫放 → 正常方向 */
-    stage.style.width  = w + 'px';
-    stage.style.height = h + 'px';
-    stage.style.left = '0px';
-    stage.style.top  = '0px';
-    stage.style.transform = 'none';
-    stage.style.padding = (ins.t+gap)+'px '+(ins.r+gap)+'px '+(ins.b+gap)+'px '+(ins.l+gap)+'px';
-  }
-}
-window.addEventListener('resize', layout);
-window.addEventListener('orientationchange', ()=>setTimeout(layout, 250));
+const grid = document.getElementById('grid');
 
 /* ---- 語音 (iPhone 內建 TTS) ---- */
 let voice = null;
@@ -127,11 +96,11 @@ function feedback(el){
   if (navigator.vibrate) navigator.vibrate(40); /* Android 會震動；iOS 自動忽略 */
 }
 
-/* ---- 建立一格 ---- */
+/* ---- 建立一格（文字包在 span 內，方便依格子大小縮放） ---- */
 function makeCell(label, cls, onTap){
   const d = document.createElement('div');
   d.className = 'cell ' + cls;
-  if (label) d.textContent = label;
+  if (label){ const s=document.createElement('span'); s.textContent=label; d.appendChild(s); }
   if (onTap) d.addEventListener('click', ()=>onTap(d));
   return d;
 }
@@ -170,7 +139,6 @@ document.body.addEventListener('touchstart', function warm(){
   document.body.removeEventListener('touchstart', warm);
 }, {once:true});
 
-layout();
 renderHome();
 </script>
 </body>
