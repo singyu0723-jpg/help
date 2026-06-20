@@ -139,9 +139,26 @@ function pickVoice(){
 }
 pickVoice();
 if (typeof speechSynthesis !== 'undefined') speechSynthesis.onvoiceschanged = pickVoice;
+
+/* iOS 語音解鎖：第一次觸碰時用無聲(volume 0)的真實字串喚醒語音引擎 */
+let primed = false;
+function primeOnce(){
+  if (primed) return; primed = true;
+  try{
+    const u = new SpeechSynthesisUtterance('啊');
+    u.volume = 0; u.lang = 'zh-TW';
+    if (voice) u.voice = voice;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+document.addEventListener('pointerdown', primeOnce, {capture:true});
+document.addEventListener('touchstart',  primeOnce, {capture:true});
+
 function speak(text){
   try{
-    speechSynthesis.cancel();
+    if (!primed) primeOnce();
+    if (speechSynthesis.paused) speechSynthesis.resume();
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang='zh-TW'; u.rate=0.9; u.pitch=1; u.volume=1;
     if (voice) u.voice = voice;
@@ -226,12 +243,6 @@ document.addEventListener('pointermove', e=>{
 });
 document.addEventListener('pointerup', deactivate);
 document.addEventListener('pointercancel', deactivate);
-
-/* 解鎖 iOS 語音：第一次任何觸碰先暖機 */
-document.body.addEventListener('touchstart', function warm(){
-  try{ const u=new SpeechSynthesisUtterance(' '); u.volume=0; speechSynthesis.speak(u);}catch(e){}
-  document.body.removeEventListener('touchstart', warm);
-}, {once:true});
 
 renderHome();
 layout();
