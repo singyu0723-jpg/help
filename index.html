@@ -11,35 +11,34 @@
 <title>弟弟表達板</title>
 <style>
   /* ===================================================================
-     要改文字 / 選項：只改下面 <script> 最上面的 CATEGORIES 那一段
-     永遠固定橫式 3×2，鋪滿整個螢幕；手機直放(方向鎖定)會自動旋轉成橫式
-     字體由 JS 依格子大小自動放最大；加入主畫面變 App 也滿版
-     若旋轉方向相反：把下面 const ROTATE = 90 改成 -90
+     要改文字/選項/位置：改下面 <script> 的 HOME 與 PAGES
+     位置編號(左到右、上到下)：1 2 3 / 4 5 6（6=右下角，最好按）
+     顏色依「位置」固定；返回固定在第3格、永遠灰色
+     觸發：點一下、或手貼著按鈕停留(會持續重複念)，兩種都可
+     永遠橫式 3×2 滿版；直放(方向鎖定)自動旋轉成橫式
+     旋轉方向相反就把 const ROTATE = 90 改成 -90
      =================================================================== */
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent;
-      user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
-  html, body { height:100%; width:100%; overflow:hidden; background:#000;
+      user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; -webkit-user-drag:none; }
+  html, body { height:100%; width:100%; overflow:hidden; background:#000; touch-action:none;
       font-family:"PingFang TC","Heiti TC","Microsoft JhengHei",system-ui,sans-serif; }
 
   #vp { position:fixed; inset:0; visibility:hidden; pointer-events:none; z-index:-1; }
   #stage { position:fixed; }
 
-  /* 永遠橫式 3×2，格線一定撐滿（不再用 container-type，避免 Safari 縮格 bug） */
   #grid { height:100%; width:100%; display:grid;
           grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr); gap:12px; }
 
   .cell { border-radius:24px; overflow:hidden;
           display:flex; align-items:center; justify-content:center; text-align:center;
-          color:#fff; font-weight:900;
+          color:#fff; font-weight:900; touch-action:none;
           transition:transform .04s ease, filter .04s ease, box-shadow .04s ease; }
   .cell > span { font-size:var(--fs, 8vmin); line-height:1.04; padding:6px; word-break:break-word; }
   .cell.empty { background:transparent; }
-  .cell:not(.empty):active { transform:scale(0.95); filter:brightness(1.3); }
-  /* 按下回饋：縮放 + 變亮 + 白色內框（無聲音） */
-  .cell.press { transform:scale(0.92); filter:brightness(1.45);
+  .cell.press { transform:scale(0.92); filter:brightness(1.5);
                 box-shadow:inset 0 0 0 10px #ffffff; }
 
-  /* 六種固定位置顏色：位置固定→顏色固定，方便用顏色辨識 */
+  /* 六種位置顏色（位置固定→顏色固定） */
   .p0{background:#1f6feb} /* 藍 */
   .p1{background:#cf222e} /* 紅 */
   .p2{background:#1a7f37} /* 綠 */
@@ -55,25 +54,35 @@
 
 <script>
 /* ====================== 可自由修改的內容 ======================
-   每個分類：name = 主畫面大按鈕文字，items = 點進去的 5 個選項
-   想念出跟畫面不同的話：寫成 {t:"按鈕字", say:"要念出來的話"} */
-const CATEGORIES = [
-  { name:"生理",   items:["尿尿","大便","冷","熱","不舒服"] },
-  { name:"不舒服", items:["頭痛","肚子痛","口腔","喉嚨","肢體"] },
-  { name:"清潔",   items:["口腔","鼻子","耳朵","眼睛","下身"] },
-  { name:"娛樂",   items:["新聞","棒球","卡通","音樂","休息"] },
-  { name:"表達",   items:["對","不對","想","不想","晚一點"] },
+   位置順序：[1, 2, 3, 4, 5, 6]（左到右、上到下，6=右下角）
+   首頁 HOME：cat=點進子分頁的分類；say=直接念(不進子分頁) */
+const HOME = [
+  { t:"都不是", say:"都不是" },   /* 1 */
+  { t:"娛樂",   cat:"娛樂"   },   /* 2 */
+  { t:"表達",   cat:"表達"   },   /* 3 */
+  { t:"不舒服", cat:"不舒服" },   /* 4 */
+  { t:"清潔",   cat:"清潔"   },   /* 5 */
+  { t:"生理",   cat:"生理"   },   /* 6 */
 ];
-/* 第六格：直接念出來的按鈕，不進子分頁（想改字就改這裡） */
-const DIRECT = "都不是";
-const ROTATE = 90; /* 方向相反就改成 -90 */
+
+/* 子分頁：每頁 6 格，"返回" 為返回鍵（固定放第3格）。其餘點了會念出文字 */
+const PAGES = {
+  "生理":   ["冷",   "不舒服", "返回", "熱",   "大便", "尿尿"],
+  "表達":   ["不想", "晚一點", "返回", "想",   "不是", "是"],
+  "娛樂":   ["新聞", "棒球",   "返回", "卡通", "音樂", "想休息"],
+  "不舒服": ["頭痛", "肚子痛", "返回", "口腔", "喉嚨", "肢體"],
+  "清潔":   ["口腔", "鼻子",   "返回", "耳朵", "眼睛", "下身"],
+};
+
+const ROTATE = 90;          /* 方向相反改 -90 */
+const REPEAT_MS = 1500;     /* 手停留時，每隔多久重複念一次 */
 /* ============================================================ */
 
 const vp    = document.getElementById('vp');
 const stage = document.getElementById('stage');
 const grid  = document.getElementById('grid');
 
-/* ---- iOS 安全區（實體方向：直放時 t=瀏海, b=底部 home條） ---- */
+/* ---- iOS 安全區 ---- */
 function getInsets(){
   const p = document.createElement('div');
   p.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;'
@@ -87,7 +96,7 @@ function getInsets(){
   return o;
 }
 
-/* ---- 量真實可視像素，把舞台撐成滿版（橫式 3×2），並算字體大小 ---- */
+/* ---- 量真實可視像素，舞台撐滿（橫式 3×2），算字體 ---- */
 const GAP = 12;
 function layout(){
   const r = vp.getBoundingClientRect();
@@ -97,28 +106,20 @@ function layout(){
   if (!W || !H) return;
   const ins = getInsets(), g = 8;
   if (W >= H){
-    /* 視窗已是橫向 → 不旋轉 */
-    stage.style.width  = W + 'px';
-    stage.style.height = H + 'px';
-    stage.style.left = '0px'; stage.style.top = '0px';
-    stage.style.transform = 'none';
+    stage.style.width = W+'px'; stage.style.height = H+'px';
+    stage.style.left='0px'; stage.style.top='0px'; stage.style.transform='none';
     stage.style.padding = (ins.t+g)+'px '+(ins.r+g)+'px '+(ins.b+g)+'px '+(ins.l+g)+'px';
   } else {
-    /* 視窗直向 → 旋轉成橫式，舞台長短邊對調，撐滿整個畫面 */
-    stage.style.width  = H + 'px';
-    stage.style.height = W + 'px';
-    stage.style.left = (W/2) + 'px';
-    stage.style.top  = (H/2) + 'px';
+    stage.style.width = H+'px'; stage.style.height = W+'px';
+    stage.style.left = (W/2)+'px'; stage.style.top = (H/2)+'px';
     stage.style.transform = 'translate(-50%,-50%) rotate('+ROTATE+'deg)';
     stage.style.padding = (ins.r+g)+'px '+(ins.b+g)+'px '+(ins.l+g)+'px '+(ins.t+g)+'px';
   }
-  /* 依實際格子大小算字體（取最大可放） */
   const cw = grid.clientWidth, ch = grid.clientHeight;
   if (cw && ch){
-    const cellW = (cw - 2*GAP) / 3;   /* 3 欄 */
-    const cellH = (ch - 1*GAP) / 2;   /* 2 列 */
+    const cellW = (cw - 2*GAP)/3, cellH = (ch - 1*GAP)/2;
     const fs = Math.max(24, Math.floor(0.36 * Math.min(cellW, cellH)));
-    de.style.setProperty('--fs', fs + 'px');
+    de.style.setProperty('--fs', fs+'px');
   }
 }
 function relayout(){ requestAnimationFrame(layout); }
@@ -129,7 +130,7 @@ window.addEventListener('load', relayout);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', relayout);
 [60, 300, 800, 1500, 2500].forEach(t=>setTimeout(layout, t));
 
-/* ---- 語音 (iPhone 內建 TTS) ---- */
+/* ---- 語音 ---- */
 let voice = null;
 function pickVoice(){
   const vs = speechSynthesis.getVoices();
@@ -148,54 +149,83 @@ function speak(text){
   }catch(e){}
 }
 
-/* ---- 觸控反饋（只有畫面，無聲音） ---- */
-function feedback(el){
+/* ---- 視覺反饋 ---- */
+function flash(el){
   el.classList.add('press');
   setTimeout(()=>el.classList.remove('press'), 180);
-  if (navigator.vibrate) navigator.vibrate(40); /* Android 會震動；iOS 自動忽略 */
+  if (navigator.vibrate) navigator.vibrate(35);
 }
 
 /* ---- 建立一格 ---- */
-function makeCell(label, cls, onTap){
+function makeCell(label, cls, fire, repeat){
   const d = document.createElement('div');
   d.className = 'cell ' + cls;
   if (label){ const s=document.createElement('span'); s.textContent=label; d.appendChild(s); }
-  if (onTap) d.addEventListener('click', ()=>onTap(d));
+  d._fire = fire || null;
+  d._repeat = !!repeat;
   return d;
 }
 
-/* ---- 主畫面：六格放分類，不足補空格 ---- */
-function renderHome(){
+/* ---- 組頁面 ---- */
+function buildGrid(cells){
   grid.innerHTML = '';
-  for (let cell=0; cell<6; cell++){
-    if (cell < CATEGORIES.length){
-      const i = cell;
-      grid.appendChild(makeCell(CATEGORIES[i].name, 'p'+i, (el)=>{
-        feedback(el); speak(CATEGORIES[i].name);
-        setTimeout(()=>renderCategory(i), 130);
-      }));
-    } else if (cell === CATEGORIES.length && DIRECT){
-      /* 第六格：直接念，不進子分頁 */
-      grid.appendChild(makeCell(DIRECT, 'p'+cell, (el)=>{ feedback(el); speak(DIRECT); }));
-    } else {
-      grid.appendChild(makeCell('', 'empty', null));
-    }
+  for (let i=0;i<6;i++){
+    const c = cells[i];
+    if (!c){ grid.appendChild(makeCell('', 'empty', null, false)); continue; }
+    let cls = c.kind==='back' ? 'back' : ('p'+i);
+    let fire, repeat=false;
+    if (c.kind==='speak'){ fire = ()=>speak(c.say); repeat = true; }
+    else if (c.kind==='cat'){ fire = ()=>{ speak(c.label); go(()=>renderCategory(c.cat)); }; }
+    else if (c.kind==='back'){ fire = ()=>{ go(renderHome); }; }
+    grid.appendChild(makeCell(c.label, cls, fire, repeat));
   }
   layout();
 }
 
-/* ---- 分類頁：5 個選項 + 第 6 格返回 ---- */
-function renderCategory(i){
-  const cat = CATEGORIES[i];
-  grid.innerHTML = '';
-  cat.items.forEach((item, idx)=>{
-    const text = typeof item==='string' ? item : item.t;
-    const say  = typeof item==='string' ? item : (item.say || item.t);
-    grid.appendChild(makeCell(text, 'p'+idx, (el)=>{ feedback(el); speak(say); }));
-  });
-  grid.appendChild(makeCell('返回', 'back', (el)=>{ feedback(el); renderHome(); }));
-  layout();
+function renderHome(){
+  buildGrid(HOME.map(e => e.cat
+    ? { label:e.t, kind:'cat', cat:e.cat }
+    : { label:e.t, kind:'speak', say:(e.say||e.t) }));
 }
+function renderCategory(name){
+  const items = PAGES[name] || [];
+  buildGrid(items.map(it => it==='返回'
+    ? { label:'返回', kind:'back' }
+    : { label:it, kind:'speak', say:it }));
+}
+
+/* ================= 觸發：點擊 + 停留(重複念) =================
+   - 手指/滑鼠按到按鈕 → 立刻觸發（不用放開）
+   - 一直貼著 → 每隔 REPEAT_MS 重複念
+   - 滑到別的按鈕 → 換成那個按鈕
+   - 進子分頁後短暫冷卻，避免手還貼著就誤觸 */
+let activeCell = null, repeatTimer = null, cooldownUntil = 0;
+function deactivate(){ if (repeatTimer){ clearInterval(repeatTimer); repeatTimer=null; } activeCell=null; }
+function go(fn){ cooldownUntil = Date.now()+450; deactivate(); fn(); }
+function fireCell(cell){ flash(cell); if (cell._fire) cell._fire(); }
+function activate(cell){
+  if (!cell || !cell._fire) return;
+  if (Date.now() < cooldownUntil) return;
+  if (cell === activeCell) return;
+  deactivate();
+  activeCell = cell;
+  fireCell(cell);
+  if (cell._repeat){
+    repeatTimer = setInterval(()=>{ if (activeCell===cell) fireCell(cell); }, REPEAT_MS);
+  }
+}
+function cellFromPoint(x,y){
+  const el = document.elementFromPoint(x,y);
+  return (el && el.closest) ? el.closest('.cell') : null;
+}
+document.addEventListener('pointerdown', e=>{ activate(cellFromPoint(e.clientX, e.clientY)); });
+document.addEventListener('pointermove', e=>{
+  const down = e.pointerType==='touch' ? true : (e.buttons>0);
+  if (!down) return;
+  activate(cellFromPoint(e.clientX, e.clientY));
+});
+document.addEventListener('pointerup', deactivate);
+document.addEventListener('pointercancel', deactivate);
 
 /* 解鎖 iOS 語音：第一次任何觸碰先暖機 */
 document.body.addEventListener('touchstart', function warm(){
