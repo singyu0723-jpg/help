@@ -35,8 +35,9 @@
           transition:transform .04s ease, filter .04s ease, box-shadow .04s ease; }
   .cell > span { font-size:var(--fs, 8vmin); line-height:1.04; padding:6px; word-break:break-word; }
   .cell.empty { background:transparent; }
-  .cell.press { transform:scale(0.92); filter:brightness(1.5);
-                box-shadow:inset 0 0 0 10px #ffffff; }
+  /* 觸摸期間持續亮（白色外框＋變亮），放開才消失 */
+  .cell.on { transform:scale(0.97); filter:brightness(1.5);
+             box-shadow:inset 0 0 0 12px #ffffff; }
 
   /* 六種位置顏色（位置固定→顏色固定） */
   .p0{background:#1f6feb} /* 藍 */
@@ -140,7 +141,7 @@ function pickVoice(){
 pickVoice();
 if (typeof speechSynthesis !== 'undefined') speechSynthesis.onvoiceschanged = pickVoice;
 
-/* iOS 語音解鎖：第一次觸碰時用無聲(volume 0)的真實字串喚醒語音引擎 */
+/* iOS 語音解鎖：只有「放開/click」這類手勢能解鎖，按下(pointerdown)不行 */
 let primed = false;
 function primeOnce(){
   if (primed) return; primed = true;
@@ -151,12 +152,9 @@ function primeOnce(){
     speechSynthesis.speak(u);
   }catch(e){}
 }
-document.addEventListener('pointerdown', primeOnce, {capture:true});
-document.addEventListener('touchstart',  primeOnce, {capture:true});
 
 function speak(text){
   try{
-    if (!primed) primeOnce();
     if (speechSynthesis.paused) speechSynthesis.resume();
     if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -164,13 +162,6 @@ function speak(text){
     if (voice) u.voice = voice;
     speechSynthesis.speak(u);
   }catch(e){}
-}
-
-/* ---- 視覺反饋 ---- */
-function flash(el){
-  el.classList.add('press');
-  setTimeout(()=>el.classList.remove('press'), 180);
-  if (navigator.vibrate) navigator.vibrate(35);
 }
 
 /* ---- 建立一格 ---- */
@@ -217,18 +208,23 @@ function renderCategory(name){
    - 滑到別的按鈕 → 換成那個按鈕
    - 進子分頁後短暫冷卻，避免手還貼著就誤觸 */
 let activeCell = null, repeatTimer = null, cooldownUntil = 0;
-function deactivate(){ if (repeatTimer){ clearInterval(repeatTimer); repeatTimer=null; } activeCell=null; }
+function deactivate(){
+  if (repeatTimer){ clearInterval(repeatTimer); repeatTimer=null; }
+  if (activeCell){ activeCell.classList.remove('on'); }
+  activeCell = null;
+}
 function go(fn){ cooldownUntil = Date.now()+450; deactivate(); fn(); }
-function fireCell(cell){ flash(cell); if (cell._fire) cell._fire(); }
 function activate(cell){
   if (!cell || !cell._fire) return;
   if (Date.now() < cooldownUntil) return;
   if (cell === activeCell) return;
   deactivate();
   activeCell = cell;
-  fireCell(cell);
-  if (cell._repeat){
-    repeatTimer = setInterval(()=>{ if (activeCell===cell) fireCell(cell); }, REPEAT_MS);
+  cell.classList.add('on');                 /* 觸摸期間持續亮 */
+  if (navigator.vibrate) navigator.vibrate(35);
+  cell._fire();                             /* 立刻念 / 動作 */
+  if (cell._repeat){                        /* 停留時重複念，外框維持亮不再閃 */
+    repeatTimer = setInterval(()=>{ if (activeCell===cell && cell._fire) cell._fire(); }, REPEAT_MS);
   }
 }
 function cellFromPoint(x,y){
@@ -241,7 +237,18 @@ document.addEventListener('pointermove', e=>{
   if (!down) return;
   activate(cellFromPoint(e.clientX, e.clientY));
 });
-document.addEventListener('pointerup', deactivate);
+/* 放開：用 release 手勢解鎖 iOS 語音；第一次點放補念一次讓首擊也出聲 */
+function onUp(){
+  if (!primed){
+    const speakCell = (activeCell && activeCell._repeat && activeCell._fire) ? activeCell : null;
+    primeOnce();
+    if (speakCell) speakCell._fire();
+  }
+  deactivate();
+}
+document.addEventListener('pointerup', onUp);
+document.addEventListener('touchend', onUp);
+document.addEventListener('click', primeOnce);
 document.addEventListener('pointercancel', deactivate);
 
 renderHome();
