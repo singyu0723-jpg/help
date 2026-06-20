@@ -76,7 +76,7 @@ const PAGES = {
 };
 
 const ROTATE = 90;          /* 方向相反改 -90 */
-const REPEAT_MS = 1500;     /* 手停留時，每隔多久重複念一次 */
+const GAP_MS = 200;         /* 手停留時，念完一個字後隔多久再念（越小越快） */
 /* ============================================================ */
 
 const vp    = document.getElementById('vp');
@@ -132,45 +132,48 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', rela
 [60, 300, 800, 1500, 2500].forEach(t=>setTimeout(layout, t));
 
 /* ---- 語音 ---- */
+const RATE = 1.0, PITCH = 1.0;   /* 語速/音高，要更慢可把 RATE 改 0.9 */
 let voice = null;
 function pickVoice(){
   const vs = speechSynthesis.getVoices();
-  voice = vs.find(v=>v.lang==='zh-TW') || vs.find(v=>/zh[-_]TW/i.test(v.lang))
-       || vs.find(v=>/zh[-_]HK/i.test(v.lang)) || vs.find(v=>v.lang && v.lang.startsWith('zh')) || null;
+  const tw = vs.filter(v=>/zh[-_]TW/i.test(v.lang) || v.lang==='zh-TW');
+  voice = tw.find(v=>!/compact/i.test((v.voiceURI||'')+(v.name||'')))  /* 優先非 compact 的台灣中文 */
+       || tw[0]
+       || vs.find(v=>/zh[-_]CN/i.test(v.lang))                         /* 退路：普通話(非粵語) */
+       || vs.find(v=>v.lang && v.lang.startsWith('zh'))
+       || null;
 }
 pickVoice();
 if (typeof speechSynthesis !== 'undefined') speechSynthesis.onvoiceschanged = pickVoice;
+
+function makeUtter(text){
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang='zh-TW'; u.rate=RATE; u.pitch=PITCH; u.volume=1;
+  if (voice) u.voice = voice;
+  return u;
+}
 
 /* iOS 語音解鎖：只有「放開/click」這類手勢能解鎖，按下(pointerdown)不行 */
 let primed = false;
 function primeOnce(){
   if (primed) return; primed = true;
-  try{
-    const u = new SpeechSynthesisUtterance('啊');
-    u.volume = 0; u.lang = 'zh-TW';
-    if (voice) u.voice = voice;
-    speechSynthesis.speak(u);
-  }catch(e){}
+  try{ const u = makeUtter('啊'); u.volume = 0; speechSynthesis.speak(u); }catch(e){}
 }
 
 function speak(text){
   try{
-    if (speechSynthesis.paused) speechSynthesis.resume();
     if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang='zh-TW'; u.rate=0.9; u.pitch=1; u.volume=1;
-    if (voice) u.voice = voice;
-    speechSynthesis.speak(u);
+    speechSynthesis.speak(makeUtter(text));
   }catch(e){}
 }
 
 /* ---- 建立一格 ---- */
-function makeCell(label, cls, fire, repeat){
+function makeCell(label, cls, kind, payload){
   const d = document.createElement('div');
   d.className = 'cell ' + cls;
   if (label){ const s=document.createElement('span'); s.textContent=label; d.appendChild(s); }
-  d._fire = fire || null;
-  d._repeat = !!repeat;
+  d._kind = kind || null;          /* 'speak' | 'cat' | 'back' | null */
+  d._payload = payload;            /* speak→要念的字；cat→分類名 */
   return d;
 }
 
@@ -179,13 +182,10 @@ function buildGrid(cells){
   grid.innerHTML = '';
   for (let i=0;i<6;i++){
     const c = cells[i];
-    if (!c){ grid.appendChild(makeCell('', 'empty', null, false)); continue; }
-    let cls = c.kind==='back' ? 'back' : ('p'+i);
-    let fire, repeat=false;
-    if (c.kind==='speak'){ fire = ()=>speak(c.say); repeat = true; }
-    else if (c.kind==='cat'){ fire = ()=>{ speak(c.label); go(()=>renderCategory(c.cat)); }; }
-    else if (c.kind==='back'){ fire = ()=>{ go(renderHome); }; }
-    grid.appendChild(makeCell(c.label, cls, fire, repeat));
+    if (!c){ grid.appendChild(makeCell('', 'empty', null)); continue; }
+    const cls = c.kind==='back' ? 'back' : ('p'+i);
+    const payload = c.kind==='cat' ? c.cat : (c.kind==='speak' ? c.say : null);
+    grid.appendChild(makeCell(c.label, cls, c.kind, payload));
   }
   layout();
 }
@@ -204,28 +204,50 @@ function renderCategory(name){
 
 /* ================= 觸發：點擊 + 停留(重複念) =================
    - 手指/滑鼠按到按鈕 → 立刻觸發（不用放開）
-   - 一直貼著 → 每隔 REPEAT_MS 重複念
+   - 一直貼著 → 念完整個字後，間隔 GAP_MS 再念（用 onend 接續，不切字）
    - 滑到別的按鈕 → 換成那個按鈕
    - 進子分頁後短暫冷卻，避免手還貼著就誤觸 */
-let activeCell = null, repeatTimer = null, cooldownUntil = 0;
+let activeCell = null, repeatTimer = null, loopToken = 0, cooldownUntil = 0;
+
+/* 重複念：念完一個完整的字 → 間隔 GAP_MS → 再念（不會把字切掉） */
+function repeatLoop(cell){
+  if (activeCell !== cell) return;
+  const myToken = ++loopToken;
+  let advanced = false;
+  const next = ()=>{
+    if (advanced) return; advanced = true;
+    if (activeCell !== cell || myToken !== loopToken) return;
+    repeatTimer = setTimeout(()=>repeatLoop(cell), GAP_MS);
+  };
+  try{
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+    const u = makeUtter(cell._payload);
+    u.onend = next; u.onerror = next;
+    speechSynthesis.speak(u);
+    /* 安全網：萬一 onend 沒觸發，估算時間後接續 */
+    setTimeout(next, 500 + cell._payload.length*350 + GAP_MS);
+  }catch(e){ setTimeout(next, 700); }
+}
+
 function deactivate(){
-  if (repeatTimer){ clearInterval(repeatTimer); repeatTimer=null; }
+  loopToken++;                               /* 讓進行中的迴圈失效 */
+  if (repeatTimer){ clearTimeout(repeatTimer); repeatTimer=null; }
   if (activeCell){ activeCell.classList.remove('on'); }
   activeCell = null;
+  /* 不取消正在念的字，讓它念完（快速點一下也聽得到） */
 }
 function go(fn){ cooldownUntil = Date.now()+450; deactivate(); fn(); }
 function activate(cell){
-  if (!cell || !cell._fire) return;
+  if (!cell || !cell._kind) return;
   if (Date.now() < cooldownUntil) return;
   if (cell === activeCell) return;
   deactivate();
   activeCell = cell;
-  cell.classList.add('on');                 /* 觸摸期間持續亮 */
+  cell.classList.add('on');                  /* 觸摸期間持續亮 */
   if (navigator.vibrate) navigator.vibrate(35);
-  cell._fire();                             /* 立刻念 / 動作 */
-  if (cell._repeat){                        /* 停留時重複念，外框維持亮不再閃 */
-    repeatTimer = setInterval(()=>{ if (activeCell===cell && cell._fire) cell._fire(); }, REPEAT_MS);
-  }
+  if (cell._kind === 'speak'){ repeatLoop(cell); }
+  else if (cell._kind === 'cat'){ speak(cell._payload); go(()=>renderCategory(cell._payload)); }
+  else if (cell._kind === 'back'){ go(renderHome); }
 }
 function cellFromPoint(x,y){
   const el = document.elementFromPoint(x,y);
@@ -240,9 +262,9 @@ document.addEventListener('pointermove', e=>{
 /* 放開：用 release 手勢解鎖 iOS 語音；第一次點放補念一次讓首擊也出聲 */
 function onUp(){
   if (!primed){
-    const speakCell = (activeCell && activeCell._repeat && activeCell._fire) ? activeCell : null;
+    const c = (activeCell && activeCell._kind==='speak') ? activeCell : null;
     primeOnce();
-    if (speakCell) speakCell._fire();
+    if (c) speak(c._payload);
   }
   deactivate();
 }
